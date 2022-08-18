@@ -7,6 +7,8 @@ library(jsonlite)
 library(TouRnament)
 options(dplyr.summarise.inform=F)
 
+outDir = "Output/"
+
 #### DATA PREP ####
 
 ## Simple input file
@@ -185,4 +187,4 @@ scheduleDF = inNames %>%
   select(-Matchday) %>%
   arrange(MatchDate)
 
-write_csv(scheduleDF, paste0("Squash-Schedule-RA-TNCL-2022-Summer-Starting-", startDate, ".csv"))
+write_csv(scheduleDF, paste0(outDir, "Squash-Schedule-RA-TNCL-2022-Summer-Starting-", startDate, ".csv"))
