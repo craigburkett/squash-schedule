@@ -1,14 +1,10 @@
-# numWeeksToCreate = 5
-# startDate = as.Date('2022-07-26')
 maxDaysLimit = 90
 
 library(tidyverse)
 library(magrittr)
 library(jsonlite)
-# library(rvest)
-# library(TouRnament)
 
-# source("Helpers.R")
+source("Helpers.R")
 
 options(dplyr.summarise.inform=F)
 
@@ -30,7 +26,7 @@ players = read.csv("Squash-Input-RA-TNCL-2022-Fall.csv") %>%
   select(Name, rating) %>%
   arrange(Name)
 
-# TODO: Some kind of error checking on input names, if I can't find them in Rankenstein
+# TODO: Some kind of error checking on input names, if I can't find them in Rankenstein, with a message at least
 
 #### MAINLINE ####
 ourPlayers = pull(players, Name)
@@ -84,6 +80,5 @@ while(length(loopPlayers) > 1){
   workingPairings = filter(workingPairings, Opponent != opponent, Opponent != player)
 }
 
-
-
+# TODO: Output schedule however
 # write_csv(scheduleDF, paste0(outDir, "Squash-Schedule-RA-TNCL-2022-Summer-Starting-", startDate, ".csv"))
