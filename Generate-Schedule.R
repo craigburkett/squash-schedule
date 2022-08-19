@@ -12,6 +12,7 @@ outDir = "Output/"
 if(!dir.exists(outDir)) dir.create(outDir)
 
 todaysDate = Sys.Date()
+startDateStr = gsub("-", "", as.character(todaysDate - maxDaysLimit - 30))
 
 #### DATA PREP ####
 
@@ -32,10 +33,11 @@ players = read.csv("Squash-Input-RA-TNCL-2022-Fall.csv") %>%
 ourPlayers = pull(players, Name)
 
 ## Get previous played games and date of match
-url <- "https://rankenstein.ca/api.pl?action=results" # &club=RA
+url <- paste0("https://rankenstein.ca/api.pl?action=results&start=", startDateStr) # &club=RA
+
 results <- url %>% 
   fromJSON(flatten = T) %>% 
-  select(loserName, winnerName, winnerId, loserId, date) %>% # About 15s to pull
+  select(loserName, winnerName, winnerId, loserId, date) %>% # About 15s to pull all data; <1s with 4 month restriction
   filter(loserName %in% ourPlayers & winnerName %in% ourPlayers)
 
 ## Each pairing and the number of days since their last match
