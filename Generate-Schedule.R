@@ -74,8 +74,15 @@ workingPairings = allPairings
 loopPlayers = allPairings %>% select(Player, PlayerRating) %>% distinct() %>% arrange(desc(PlayerRating)) %>% pull(Player)
 while(length(loopPlayers) > 1){
   player = loopPlayers[1]
-  opponent = workingPairings %>% filter(Player == player) %>% filter(Similarity == min(Similarity)) %>% pull(Opponent)
-  cat(paste0("\nMatch created: ", player, " (", players$rating[players$Name == player],") vs ", opponent, " (", players$rating[players$Name == opponent],")"))
+  thisPairing = workingPairings %>% filter(Player == player) %>% filter(Similarity == min(Similarity))
+  opponent = thisPairing %>% pull(Opponent)
+  
+  playerRating = players$rating[players$Name == player]
+  opponentRating = players$rating[players$Name == opponent]
+  daysSinceLastMatch = thisPairing %>% pull(DaysSinceLastGame)
+  if(daysSinceLastMatch == maxDaysLimit) daysSinceLastMatch = paste(maxDaysLimit, "or more")
+  
+  cat(paste0("\nMatch created: ", player, " (", playerRating,") \tvs ", opponent, " (", opponentRating,") \t- ", daysSinceLastMatch, " days since last match"))
   loopPlayers = setdiff(loopPlayers, c(player, opponent))
   workingPairings = filter(workingPairings, Opponent != opponent, Opponent != player)
 }
