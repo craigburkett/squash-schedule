@@ -1,4 +1,9 @@
 maxDaysLimit = 90
+RATING_DEFAULT = 6500
+club = "RA"
+league = "TNCL"
+year = "2022"
+season = "Fall"
 
 library(tidyverse)
 library(magrittr)
@@ -7,23 +12,28 @@ library(jsonlite)
 source("Helpers.R")
 
 options(dplyr.summarise.inform=F)
-
-outDir = "Output/"
-if(!dir.exists(outDir)) dir.create(outDir)
-
 todaysDate = Sys.Date()
 startDateStr = gsub("-", "", as.character(todaysDate - maxDaysLimit - 30))
 
+fileString = paste(club, league, year, season, sep = "-")
+outDir = "Output/"
+if(!dir.exists(outDir)) dir.create(outDir)
+outFile = paste0(outDir, "Squash-Schedule-", fileString, "-", todaysDate, ".csv")
+data.frame(Home=character(), HomeRating=integer(), Away=character(), AwayRating=integer(), DaysSinceLastMatch=character()) %>%
+  write.csv(outFile, row.names=F)
+
 #### DATA PREP ####
+if(!file.exists(paste0("Squash-Input-", fileString, ".csv"))) stop("Input file does not exist.")
 
 ## Names and Ranks from Rankenstein directly
 url <- "https://rankenstein.ca/api.pl?action=rankings" # &club=RA
 rankings <- url %>% fromJSON(flatten = T) %>% extract2("rankings") %>% select(starts_with("player"), rating) %>% rename(Name = player.name, ID = player.id)
 
 ## Simple input file - join to ratings online
-players = read.csv("Squash-Input-RA-TNCL-2022-Fall.csv") %>%
+players = read.csv(paste0("Squash-Input-", fileString, ".csv")) %>%
+  mutate(Name = paste(First, Last)) %>%
   left_join(rankings, by = "Name") %>%
-  mutate(rating = ifelse(is.na(rating), RatingEstimate, rating)) %>%
+  mutate(rating = ifelse(is.na(rating) & is.na(RatingEstimate), RATING_DEFAULT, ifelse(is.na(rating), RatingEstimate, rating))) %>%
   select(Name, rating) %>%
   arrange(Name)
 
@@ -76,18 +86,24 @@ workingPairings = allPairings
 loopPlayers = allPairings %>% select(Player, PlayerRating) %>% distinct() %>% arrange(desc(PlayerRating)) %>% pull(Player)
 while(length(loopPlayers) > 1){
   player = loopPlayers[1]
+  
+  ## Find best match for current player
   thisPairing = workingPairings %>% filter(Player == player) %>% filter(Similarity == min(Similarity))
   opponent = thisPairing %>% pull(Opponent)
   
+  ## Get player ratings and days since last match
   playerRating = players$rating[players$Name == player]
   opponentRating = players$rating[players$Name == opponent]
   daysSinceLastMatch = thisPairing %>% pull(DaysSinceLastGame)
   if(daysSinceLastMatch == maxDaysLimit) daysSinceLastMatch = paste(maxDaysLimit, "or more")
   
+  ## Display match (names, ratings, days since last game) on console and write to file
   cat(paste0("\nMatch created: ", player, " (", playerRating,") \tvs ", opponent, " (", opponentRating,") \t- ", daysSinceLastMatch, " days since last match"))
+  thisRow = data.frame(Home = player, HomeRating = playerRating, Away = opponent, AwayRating = opponentRating, DaysSinceLastMatch = daysSinceLastMatch)
+  write.table(thisRow, file = outFile, append = T, row.names = F, col.names = F, sep = ",")
+  
+  ## Remove players from pool
   loopPlayers = setdiff(loopPlayers, c(player, opponent))
   workingPairings = filter(workingPairings, Opponent != opponent, Opponent != player)
 }
-
-# TODO: Output schedule however
-# write_csv(scheduleDF, paste0(outDir, "Squash-Schedule-RA-TNCL-2022-Summer-Starting-", startDate, ".csv"))
+# TODO: Last two players might have just played, should look back and swap if this is the case
