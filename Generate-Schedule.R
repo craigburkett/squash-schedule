@@ -34,10 +34,14 @@ players = read.csv(paste0("Squash-Input-", fileString, ".csv")) %>%
   mutate(Name = paste(First, Last)) %>%
   left_join(rankings, by = "Name") %>%
   mutate(rating = ifelse(is.na(rating) & is.na(RatingEstimate), RATING_DEFAULT, ifelse(is.na(rating), RatingEstimate, rating))) %>%
+  filter(is.na(Absent) | Absent == 0)
+
+tt = players %>% filter(is.na(ID)) %>% pull(Name) %>% paste(collapse = '\n')
+message(paste0("Names not found in Rankenstein:\n\n", tt))
+
+players = players %>%
   select(Name, rating) %>%
   arrange(Name)
-
-# TODO: Some kind of error checking on input names, if I can't find them in Rankenstein, with a message at least
 
 #### MAINLINE ####
 ourPlayers = pull(players, Name)
@@ -88,13 +92,14 @@ while(length(loopPlayers) > 1){
   player = loopPlayers[1]
   
   ## Find best match for current player
-  thisPairing = workingPairings %>% filter(Player == player) %>% filter(Similarity == min(Similarity))
+  thisPairing = workingPairings %>% filter(Player == player) %>% filter(Similarity == min(Similarity)) %>% slice(1)
   opponent = thisPairing %>% pull(Opponent)
   
   ## Get player ratings and days since last match
   playerRating = players$rating[players$Name == player]
   opponentRating = players$rating[players$Name == opponent]
   daysSinceLastMatch = thisPairing %>% pull(DaysSinceLastGame)
+  
   if(daysSinceLastMatch == maxDaysLimit) daysSinceLastMatch = paste(maxDaysLimit, "or more")
   
   ## Display match (names, ratings, days since last game) on console and write to file
