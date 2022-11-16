@@ -30,14 +30,17 @@ url <- "https://rankenstein.ca/api.pl?action=rankings" # &club=RA
 rankings <- url %>% fromJSON(flatten = T) %>% extract2("rankings") %>% select(starts_with("player"), rating) %>% rename(Name = player.name, ID = player.id)
 
 ## Simple input file - join to ratings online
-players = read.csv(paste0("Squash-Input-", fileString, ".csv")) %>%
+players = read.csv(file.choose()) %>%
+# players = read.csv(paste0("Squash-Input-", fileString, ".csv")) %>%
   mutate(Name = paste(First, Last)) %>%
   left_join(rankings, by = "Name") %>%
-  mutate(rating = ifelse(is.na(rating) & is.na(RatingEstimate), RATING_DEFAULT, ifelse(is.na(rating), RatingEstimate, rating))) %>%
+  # Estimate from input file takes priority, then Rankenstein rating (could be old or egregiously wrong), then default value is neither available
+  mutate(rating = ifelse(!is.na(RatingEstimate), RatingEstimate, ifelse(!is.na(rating), rating, RATING_DEFAULT))) %>%
   filter(is.na(Absent) | Absent == 0)
 
-tt = players %>% filter(is.na(ID)) %>% pull(Name) %>% paste(collapse = '\n')
-message(paste0("Names not found in Rankenstein:\n\n", tt))
+tt = players %>% filter(is.na(ID))
+message("Names not found in Rankenstein:\n\n")
+message(paste0(capture.output(tt), collapse = '\n'))
 
 players = players %>%
   select(Name, rating) %>%
@@ -88,8 +91,18 @@ allPairings = expand.grid(Opponent = ourPlayers, Player = ourPlayers) %>%
 # TODO: Consider all players simultaneously
 workingPairings = allPairings
 loopPlayers = allPairings %>% select(Player, PlayerRating) %>% distinct() %>% arrange(desc(PlayerRating)) %>% pull(Player)
-while(length(loopPlayers) > 1){
+while(length(loopPlayers) > 0){
+  
   player = loopPlayers[1]
+  
+  # IF there's only one player left, just assign them to play a spare
+  if(length(loopPlayers) == 1){
+    opponent = "<SPARE>"
+    cat(paste0("\nMatch created: ", player, " (", playerRating,") \tvs ", opponent))
+    thisRow = data.frame(Home = player, HomeRating = playerRating, Away = opponent, AwayRating = "", DaysSinceLastMatch = "")
+    write.table(thisRow, file = outFile, append = T, row.names = F, col.names = F, sep = ",")
+    break
+  } 
   
   ## Find best match for current player
   thisPairing = workingPairings %>% filter(Player == player) %>% filter(Similarity == min(Similarity)) %>% slice(1)
