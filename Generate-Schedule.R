@@ -2,8 +2,8 @@ maxDaysLimit = 90
 RATING_DEFAULT = 6500
 club = "RA"
 league = "TNCL"
-year = "2022"
-season = "Fall"
+year = "2023"
+season = "Winter"
 
 library(tidyverse)
 library(magrittr)
@@ -23,7 +23,7 @@ data.frame(Home=character(), HomeRating=integer(), Away=character(), AwayRating=
   write.csv(outFile, row.names=F)
 
 #### DATA PREP ####
-if(!file.exists(paste0("Squash-Input-", fileString, ".csv"))) stop("Input file does not exist.")
+# if(!file.exists(paste0("Squash-Input-", fileString, ".csv"))) stop("Input file does not exist.")
 
 ## Names and Ranks from Rankenstein directly
 url <- "https://rankenstein.ca/api.pl?action=rankings" # &club=RA
