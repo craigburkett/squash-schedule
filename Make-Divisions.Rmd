@@ -29,6 +29,7 @@ allCourts = 6:1 # Available court numbers, prioritize higher as closer to squash
 RATING_DEFAULT = 6500 # What to give a player if we can't find them and nothing in the input file
 ```
 
+
 ```{r, echo=FALSE}
 fileString = paste(club, year, season, sep = "-")
 outDir = "Output/"
@@ -116,12 +117,15 @@ players = data.frame(Name = "bye", Division = as.character(divisionsWithBye)) %>
 Full Divisions and divisions with a bye
 ```{r, echo=FALSE}
 for(div in c(fullDivs, divisionsWithBye)){
-  sch = read_csv(outFile, col_types = colTypeVec)
+  boolFlag = FALSE
   cat(paste("\nCreating Division:", div))
-  boolFlag = if(div == 1) FALSE else TRUE
   
-  ## Update available times for play
-  allDateTimes = setdiff(allDateTimesFull, select(sch, Date, Time, Court))
+  if(div != 1){
+    sch = read_csv(outFile, col_types = colTypeVec)
+    ## Update available times for play
+    allDateTimes = setdiff(allDateTimesFull, select(sch, Date, Time, Court))
+    boolFlag = TRUE
+  }
   
   playersThisDiv = filter(players, Division == div)
   get_all_matchups(playersThisDiv$Name, playersThisDiv$Name) %>%
