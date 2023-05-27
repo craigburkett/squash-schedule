@@ -1,0 +1,182 @@
+---
+title: "Fill the league by making divisions and setting dates/times"
+output: html_notebook
+---
+
+
+```{r, echo=FALSE, message= FALSE}
+library(tidyverse, warn.conflicts = F)
+library(magrittr)
+library(jsonlite)
+
+source("Helpers.R")
+
+options(dplyr.summarise.inform=F)
+```
+
+
+## Set Parameters
+```{r}
+club = "WSQ"
+year = "2023"
+season = "Summer"
+startDate = as.Date('2023-05-29') # League start date
+numWeeks = 5 # How many weeks this league runs
+divSize = 6
+allDates = startDate + seq(0, 7*(numWeeks-1), 7)
+allTimes = c("5:40pm", "6:20pm", "7:00pm", "7:40pm", "8:20pm") # Possible court times
+allCourts = 6:1 # Available court numbers, prioritize higher as closer to squash office
+RATING_DEFAULT = 6500 # What to give a player if we can't find them and nothing in the input file
+```
+
+```{r, echo=FALSE}
+fileString = paste(club, year, season, sep = "-")
+outDir = "Output/"
+if(!dir.exists(outDir)) dir.create(outDir)
+outFile = paste0(outDir, "Squash-Schedule-", fileString, "-", startDate, ".csv")
+colTypeVec = "cciilllciDci"
+```
+
+
+```{r, echo=FALSE}
+timeLookup = data.frame(Heading = c("No540", "No620", "No820"), Time = allTimes[c(1, 2, 5)])
+```
+
+
+Get all possible days/times/courts to play on, with restrictions
+```{r, echo=FALSE}
+allDateTimesFull = expand.grid(Date = allDates, Time = allTimes, Court = allCourts) %>%
+  filter(!(Time == "5:40pm" & Court %in% 1:2)) %>%
+  filter(!(Time == "6:20pm" & Court %in% 1)) %>%
+  filter(!(Time == "7:00pm" & Court %in% 1)) %>%
+  filter(!(Time == "7:40pm" & Court %in% 1)) %>%
+  filter(!(Time == "8:20pm" & Court %in% 1:3))
+
+allDateTimes = allDateTimesFull
+```
+
+
+Import players and get rankings from RS
+```{r, echo=FALSE}
+## Names and Ranks from Rankenstein directly
+url <- "https://rankenstein.ca/api.pl?action=rankings" # Only gets 'active' players, unfortunately
+
+rankings <- url %>% fromJSON(flatten = T) %>% extract2("rankings") %>% 
+  select(starts_with("player"), rating) %>% rename(Name = player.name, ID = player.id)
+
+## Simple input file - join to ratings online
+# players = read.csv(file.choose()) %>%
+players = read.csv(paste0("Squash-Input-", fileString, "-Auto.csv")) %>%
+  # mutate(Name = paste(First, Last)) %>%
+  mutate(Name = trimws(Name)) %>%
+  mutate(across(starts_with("No"), ~ .x == 1)) %>%
+  replace_na(list(No_540_timeslot = F, No_620_timeslot = F, No_820_timeslot = F)) %>%
+  left_join(rankings, by = "Name") %>%
+  # Estimate from input file takes priority, then Rankenstein rating (could be old or egregiously wrong), then default value if neither available
+  mutate(RSrating = rating) %>%
+  mutate(rating = ifelse(!is.na(RatingEstimate), RatingEstimate, ifelse(!is.na(rating), rating, RATING_DEFAULT))) %>%
+  rename(Rating = rating)
+```
+
+
+Names not found in Rankenstein - check spelling
+```{r}
+players %>% filter(is.na(ID)) %>% select(Name, RatingEstimate, RSrating)
+```
+
+Assign Divisions
+```{r, echo=FALSE}
+numDivisions = ceiling(nrow(players) / divSize)
+numSmallDivs = (divSize - nrow(players) %% divSize) %% divSize
+stopifnot(numSmallDivs %% 2 == 0) # TODO: Make this work with odd number of smaller divs
+
+numFullDivs = numDivisions - numSmallDivs
+fullDivs  = 1:numFullDivs
+smallDivs = (numFullDivs+1):numDivisions
+
+divisionsWithBye = smallDivs[1:length(smallDivs) %% 2 == 1]
+theseDivisions = c(rep(1:numFullDivs, each = divSize), rep(smallDivs, each = divSize-1))
+stopifnot(length(theseDivisions) == nrow(players))
+
+players$Division = as.character(theseDivisions)
+```
+
+
+Add in bye players
+```{r, echo=FALSE}
+players = data.frame(Name = "bye", Division = as.character(divisionsWithBye)) %>%
+  bind_rows(players) %>% arrange(Division, desc(Rating))
+```
+
+
+# Schedule Creation
+
+### Assign games one Division at a time, for 5 weeks
+
+Full Divisions and divisions with a bye
+```{r, echo=FALSE}
+for(div in c(fullDivs, divisionsWithBye)){
+  sch = read_csv(outFile, col_types = colTypeVec)
+  cat(paste("\nCreating Division:", div))
+  boolFlag = if(div == 1) FALSE else TRUE
+  
+  ## Update available times for play
+  allDateTimes = setdiff(allDateTimesFull, select(sch, Date, Time, Court))
+  
+  playersThisDiv = filter(players, Division == div)
+  get_all_matchups(playersThisDiv$Name, playersThisDiv$Name) %>%
+    add_dates(allDates) %>% # TODO: Improve this function, it's a hack for now
+    mutate(Time = NA, Court = NA) %>%
+    add_times_and_courts(allDateTimes) %>% # Add times and courts
+    write_csv(outFile, append = boolFlag) # Persist
+}
+```
+
+
+Outstanding divisions with matching bye
+```{r, echo=FALSE}
+for(div in setdiff(smallDivs, divisionsWithBye)){
+  schInt = read_csv(outFile, col_types = colTypeVec)
+  cat(paste("\nCreating Division:", div))
+  
+  allDateTimes = setdiff(allDateTimesFull, select(schInt, Date, Time, Court))
+  playersThisDiv = filter(players, Division == div)
+  
+  # Add players to bye in adjacent division
+  pairedDiv = div - 1
+  pairedPlayers = get_paired_players(schInt, pairedDiv)
+  
+  addedPlayers = data.frame(Player1 = pairedPlayers, Player2 = "bye", OtherDivPlayer = playersThisDiv$Name, Division = as.character(pairedDiv))
+  
+  # Add players to bye games
+  schRev = add_bye_players(schInt, addedPlayers, div, pairedDiv)
+  schRev %>% write_csv(outFile) # Overwrite schedule with bye games filled in
+  
+  ## Already scheduled games for each player
+  preSchedGames = schRev %>% filter(Player2 %in% playersThisDiv$Name | Player1 %in% playersThisDiv$Name)
+  
+  # New games needed to be scheduled
+  get_all_matchups(playersThisDiv$Name, playersThisDiv$Name) %>%
+    add_dates_sample(preSchedGames, allDates) %>% # Add dates
+    add_times_and_courts(allDateTimes) %>% # Add times and courts
+    write_csv(outFile, append = T) # Persist
+}
+```
+
+
+Final check
+```{r, echo=FALSE}
+schFinal = read_csv(outFile, col_types = colTypeVec)
+
+## Assert nobody is playing twice on same day
+schFinal %>% select(Player1, Player2, Date, Time) %>% 
+  pivot_longer(starts_with("Player"), values_to = "Name") %>%
+  group_by(Name, Date) %>% tally() %>% pull(n) %>% equals(1) %>% all() %>% stopifnot()
+
+schFinal %>% 
+  select(Player1, Player2, Date, Time, Court, Division) %>% 
+  arrange(Date, Time, Court) %>%
+  write_csv(outFile)
+
+```
+
